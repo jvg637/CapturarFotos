@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.ImageFormat;
+import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -27,6 +28,7 @@ import android.support.v7.widget.PopupMenu;
 import android.util.Log;
 import android.util.Size;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.SubMenu;
 import android.view.Surface;
 import android.view.TextureView;
@@ -99,6 +101,7 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
                 tomarImagen();
             }
         });
+        textureview.setOnTouchListener(handleTouch);
 
     }
 
@@ -182,7 +185,14 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
             CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
             mCameraId = manager.getCameraIdList()[indiceCamara];
             CameraCharacteristics characteristics = manager.getCameraCharacteristics(mCameraId);
-            StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+            maxzoom = characteristics.get(
+                    CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
+            Rect m = characteristics.get(
+                    CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+            pixels_anchura_sensor = m.width();
+            pixels_altura_sensor = m.height();
+            StreamConfigurationMap map = characteristics.get(
+                    CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
             assert map != null;
             Size tamanos[] = map.getOutputSizes(SurfaceTexture.class);
             listadoResolucionesPreview.clear();
@@ -196,14 +206,24 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
             Size tamanosCapture[] = map.getOutputSizes(ImageFormat.JPEG);
 
             listadoResolucionesCaptura.clear();
-            cont=0;
+            cont = 0;
             for (Size tam : tamanosCapture) {
                 listadoResolucionesCaptura.add(1, 1, cont++, "Resolución Captura: " + tam.toString());
             }
             dimensionesJPEG = tamanosCapture[indiceResolucionCaptura];
 
-            Log.i(TAG, "Dimensiones Imagen =" +
-                    String.valueOf(dimensionesPreview));
+            zoom_level = maxzoom;
+            int width = (int) (pixels_anchura_sensor / zoom_level);
+            int height = (int) (pixels_altura_sensor / zoom_level);
+            int startx = (pixels_anchura_sensor - width) / 2;
+            int starty = (pixels_altura_sensor - height) / 2;
+            Rect zonaActiva = new Rect(startx, starty, startx + width,
+                    starty + height);
+            zoom = zonaActiva;
+            Log.i(TAG, "Dimensiones Imagen Preview =" +String.valueOf(dimensionesPreview) +
+                    "Dimensiones Imagen Captura =" +String.valueOf(dimensionesJPEG) +
+                    "Dimensiones Sensor: "+ m.toString() + "Maxzoom="
+                    +String.valueOf(maxzoom) );
             manager.openCamera(mCameraId, stateCallback, null);
         } catch (CameraAccessException e) {
             e.printStackTrace();
@@ -230,6 +250,13 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
         }
     };
 
+    public float separacion = 0;
+    public double zoom_level = 1.0;
+    private int pixels_anchura_sensor;
+    private int pixels_altura_sensor;
+    float maxzoom;
+    Rect zoom;
+
     private void crearPreviewCamara() {
         try {
             SurfaceTexture texture = textureview.getSurfaceTexture();
@@ -244,6 +271,7 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
                     CameraMetadata.CONTROL_MODE_AUTO);
             mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,
                     CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
+            mPreviewRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, zoom);
             CameraCaptureSession.StateCallback statecallback =
                     new CameraCaptureSession.StateCallback() {
                         public void onConfigured(CameraCaptureSession cameraCaptureSession) {
@@ -336,12 +364,13 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
         if (null == mCameraDevice) {
             Log.e(TAG, "updatePreview error, return");
         }
-//        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_MODE,
-//                CameraMetadata.CONTROL_MODE_AUTO);
-//        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,
-//                CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-//        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE,
-//                CaptureRequest.CONTROL_AE_MODE_ON);
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_MODE,
+                CameraMetadata.CONTROL_MODE_AUTO);
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,
+                CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE,
+                CaptureRequest.CONTROL_AE_MODE_ON);
+        mPreviewRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, zoom);
         try {
             mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(),
                     null, mBackgroundHandler);
@@ -682,4 +711,47 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
     private ImageReader mImageReader;
     //    private Size dimensionesPreview;
     private Size dimensionesJPEG;
+
+
+    private float getFingerSpacing(MotionEvent event) {
+        float x = event.getX(0) - event.getX(1);
+        float y = event.getY(0) - event.getY(1);
+        return (float) Math.sqrt(x * x + y * y);
+    }
+    private View.OnTouchListener handleTouch = new View.OnTouchListener() {
+        public boolean onTouch(View v, MotionEvent event) {
+            int action = event.getAction();
+            float sep_actual;
+            if (event.getPointerCount() > 1) {// Multi touch
+                sep_actual = getFingerSpacing(event);
+                if (separacion != 0) {
+                    if (sep_actual > separacion && maxzoom > zoom_level + 0.1)
+                    {
+                        zoom_level += 0.1;
+                    } else if (sep_actual < separacion && zoom_level >= 1.1) {
+                        zoom_level -= 0.1;
+                    }
+                    int width = (int) (pixels_anchura_sensor / zoom_level);
+                    int height = (int) (pixels_altura_sensor / zoom_level);
+                    int startx = (pixels_anchura_sensor - width) / 2;
+                    int starty = (pixels_altura_sensor - height) / 2;
+                    Rect zonaActiva = new Rect(startx, starty,startx + width, starty + height);
+                    mPreviewRequestBuilder.set(
+                            CaptureRequest.SCALER_CROP_REGION, zonaActiva);
+                }
+                separacion = sep_actual;
+            } else {
+                separacion = 0;
+            }
+            try {
+                mCaptureSession.setRepeatingRequest(
+                        mPreviewRequestBuilder.build(), null, null);
+            } catch (CameraAccessException e) {
+                e.printStackTrace();
+            } catch (NullPointerException ex) {
+                ex.printStackTrace();
+            }
+            return true;
+        }
+    };
 }
