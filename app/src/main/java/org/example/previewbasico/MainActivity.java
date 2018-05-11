@@ -12,8 +12,11 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.Image;
 import android.media.ImageReader;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.annotation.NonNull;
@@ -31,6 +34,12 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 
@@ -53,8 +62,12 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
     private SubMenu listadoCamaras;
     private int indiceCamara;
     private static final String STATE_CAMERA_INDEX = "cameraIndex";
-    private int indiceResolucion;
-    private SubMenu listadoResoluciones;
+    private static final String PREVIEW_RESOLUTION_INDEX = "previewResoluctionIndex";
+    private static final String CAPTURE_RESOLUTION_INDEX = "captureResoluctionIndex";
+    private int indiceResolucionPreview;
+    private int indiceResolucionCaptura;
+    private SubMenu listadoResolucionesPreview;
+    private SubMenu listadoResolucionesCaptura;
 
     protected void onCreate(Bundle savedInstanceState) {
         Log.i(TAG, "En onCreate !!!!");
@@ -68,29 +81,53 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
         popup.inflate(R.menu.menu);
         popup.setOnMenuItemClickListener(this);
         listadoCamaras = popup.getMenu().findItem(R.id.cambiarCamara).getSubMenu();
-        listadoResoluciones = popup.getMenu().findItem(R.id.cambiarResolucion).getSubMenu();
+        listadoResolucionesPreview = popup.getMenu().findItem(R.id.cambiarResolucionPreview).getSubMenu();
+        listadoResolucionesCaptura = popup.getMenu().findItem(R.id.cambiarResolucionCaptura).getSubMenu();
 
 
         if (savedInstanceState != null) {
             indiceCamara = savedInstanceState.getInt(STATE_CAMERA_INDEX, 0);
-            indiceCamara = savedInstanceState.getInt(STATE_CAMERA_INDEX, 0);
+            indiceResolucionPreview = savedInstanceState.getInt(PREVIEW_RESOLUTION_INDEX, 0);
+            indiceResolucionCaptura = savedInstanceState.getInt(CAPTURE_RESOLUTION_INDEX, 0);
         } else {
-            indiceCamara = indiceResolucion = 0;
+            indiceCamara = indiceResolucionPreview = indiceResolucionCaptura = 0;
         }
 
         btnCapture = (Button) findViewById(R.id.btnCaptura);
         btnCapture.setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) {
-//                tomarImagen();
+                tomarImagen();
             }
         });
 
     }
 
+    private void guardar(byte[] bytes) throws IOException {
+        final File fichero =
+                new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES) +
+                        "/micamara2.jpg");
+        Toast.makeText(MainActivity.this, "/micamara2.jpg saved",
+                Toast.LENGTH_SHORT).show();
+        OutputStream output = null;
+
+        try {
+            output = new FileOutputStream(fichero);
+            output.write(bytes);
+            output.close();
+        } finally {
+            if (null != output) {
+                output.close();
+            }
+        }
+    }
+
+
     @Override
     public void onSaveInstanceState(Bundle savedInstanceState) {
 // Save the current camera index.
         savedInstanceState.putInt(STATE_CAMERA_INDEX, indiceCamara);
+        savedInstanceState.putInt(PREVIEW_RESOLUTION_INDEX, indiceResolucionPreview);
+        savedInstanceState.putInt(CAPTURE_RESOLUTION_INDEX, indiceResolucionCaptura);
         super.onSaveInstanceState(savedInstanceState);
     }
 
@@ -148,15 +185,22 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
             StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
             assert map != null;
             Size tamanos[] = map.getOutputSizes(SurfaceTexture.class);
-            listadoResoluciones.clear();
+            listadoResolucionesPreview.clear();
             int cont = 0;
             for (Size tam : tamanos) {
-                listadoResoluciones.add(1, 1, cont++, "Resolución: " + tam.toString());
+                listadoResolucionesPreview.add(1, 1, cont++, "Resolución: " + tam.toString());
             }
-            dimensionesPreview = tamanos[indiceResolucion];
+            dimensionesPreview = tamanos[indiceResolucionPreview];
 //            dimensionesPreview=tamanos[0];
             //El primer tamaño posible. Normalmente el mayor
-            dimensionesJPEG = map.getOutputSizes(ImageFormat.JPEG)[0];
+            Size tamanosCapture[] = map.getOutputSizes(ImageFormat.JPEG);
+
+            listadoResolucionesCaptura.clear();
+            cont=0;
+            for (Size tam : tamanosCapture) {
+                listadoResolucionesCaptura.add(1, 1, cont++, "Resolución Captura: " + tam.toString());
+            }
+            dimensionesJPEG = tamanosCapture[indiceResolucionCaptura];
 
             Log.i(TAG, "Dimensiones Imagen =" +
                     String.valueOf(dimensionesPreview));
@@ -225,24 +269,161 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
         }
     }
 
-    protected void comenzarPreview() {
-        if (null == mCameraDevice) {
-            Log.e(TAG, "updatePreview error, return");
-        }
+//    protected void comenzarPreview() {
+//        if (null == mCameraDevice) {
+//            Log.e(TAG, "updatePreview error, return");
+//        }
+//        try {
+//            mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(),
+//                    null, mBackgroundHandler);
+//            Log.v(TAG, "*****setRepeatingRequest");
+//        } catch (CameraAccessException e) {
+//            e.printStackTrace();
+//        }
+//    }
+
+    private void comenzarPreview() {
+        configurarImageReader();
         try {
-            mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(),
-                    null, mBackgroundHandler);
-            Log.v(TAG, "*****setRepeatingRequest");
+            SurfaceTexture texture = textureview.getSurfaceTexture();
+            assert texture != null;
+            texture.setDefaultBufferSize(dimensionesPreview.getWidth(),
+                    dimensionesPreview.getHeight());
+            Surface surface = new Surface(texture);
+            mPreviewRequestBuilder = mCameraDevice.createCaptureRequest(
+                    CameraDevice.TEMPLATE_PREVIEW);
+            mPreviewRequestBuilder.addTarget(surface);
+
+            mCameraDevice.createCaptureSession(
+                    Arrays.asList(surface, mImageReader.getSurface()),
+                    cameraCaptureSessionStatecallback, null);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
     }
 
+    private void configurarImageReader() {
+        try {
+            mImageReader = ImageReader.newInstance(dimensionesJPEG.getWidth(),
+                    dimensionesJPEG.getHeight(), ImageFormat.JPEG, 1);
+            mImageReader.setOnImageAvailableListener(readerListener,
+                    mBackgroundHandler);
+            mJPEGRequestBuilder = mCameraDevice.createCaptureRequest(
+                    CameraDevice.TEMPLATE_STILL_CAPTURE);
+            //Decirle donde se dejarán las imágenes
+            mJPEGRequestBuilder.addTarget(mImageReader.getSurface());
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }
+    }
+
+    CameraCaptureSession.StateCallback cameraCaptureSessionStatecallback =
+            new CameraCaptureSession.StateCallback() {
+                public void onConfigured(CameraCaptureSession cameraCaptureSession) {
+                    if (null == mCameraDevice) {
+                        return;
+                    }
+                    mCaptureSession = cameraCaptureSession;
+                    updatePreview();
+                }
+
+                public void onConfigureFailed(CameraCaptureSession camCaptureSession) {
+                    Toast.makeText(MainActivity.this, "Configuracion fallida", Toast.LENGTH_SHORT).show();
+                }
+            };
+
+    protected void updatePreview() {
+        if (null == mCameraDevice) {
+            Log.e(TAG, "updatePreview error, return");
+        }
+//        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_MODE,
+//                CameraMetadata.CONTROL_MODE_AUTO);
+//        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,
+//                CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+//        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE,
+//                CaptureRequest.CONTROL_AE_MODE_ON);
+        try {
+            mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(),
+                    null, mBackgroundHandler);
+            Log.i(TAG, "*****setRepeatingRequest. Captura preview arrancada");
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    private void tomarImagen() {
+        try {
+            mJPEGRequestBuilder.set(CaptureRequest.CONTROL_MODE,
+                    CameraMetadata.CONTROL_MODE_AUTO);
+            mJPEGRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,
+                    CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+            mJPEGRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE,
+                    CaptureRequest.CONTROL_AE_MODE_ON);
+
+            CameraCaptureSession.CaptureCallback CaptureCallback
+                    = new CameraCaptureSession.CaptureCallback() {
+                public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest
+                        request, TotalCaptureResult result) {
+                    comenzarPreview();
+                }
+            };
+            mCaptureSession.capture(mJPEGRequestBuilder.build(),
+                    CaptureCallback, null);
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }
+    }
+
+    ImageReader.OnImageAvailableListener readerListener =
+            new ImageReader.OnImageAvailableListener() {
+                public void onImageAvailable(ImageReader reader) {
+                    Image imagen = null;
+                    try {
+                        imagen = reader.acquireLatestImage();
+                        //Aquí se podría guardar o procesar la imagen
+                        ByteBuffer buffer = imagen.getPlanes()[0].getBuffer();
+                        byte[] bytes = new byte[buffer.capacity()];
+                        buffer.get(bytes);
+                        guardar(bytes);
+                    } catch (FileNotFoundException e) {
+                        e.printStackTrace();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    } finally {
+                        if (imagen != null) {
+                            imagen.close();
+                        }
+                    }
+                }
+
+                private void guardar(byte[] bytes) throws IOException {
+                    final File fichero =
+                            new File(Environment.getExternalStoragePublicDirectory(
+                                    Environment.DIRECTORY_PICTURES).toString() +
+                                    "/micamara2.jpg");
+                    Toast.makeText(MainActivity.this, "/micamara2.jpg saved",
+                            Toast.LENGTH_SHORT).show();
+                    OutputStream output = null;
+                    try {
+                        output = new FileOutputStream(fichero);
+                        output.write(bytes);
+                        output.close();
+                    } finally {
+                        if (null != output) {
+                            output.close();
+                        }
+                    }
+                }
+            };
+
     private static final int SOLICITUD_PERMISOS = 0;
 
     private void solicitarPermisos() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.CAMERA}, SOLICITUD_PERMISOS);
+        if ((ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
+                ||
+                (ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)) {
+            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE}, SOLICITUD_PERMISOS);
         } else {
             inicializaAplicacion();
         }
@@ -264,7 +445,9 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
             case SOLICITUD_PERMISOS: {
                 // If request is cancelled, the result arrays are empty.
 
-                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {/* permission was granted, yay! Do the contacts-related task you need to do.*/
+                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
+                        ||
+                        ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                     Toast.makeText(this, "Se deben aceptar todos los permisos para inicializar la aplicación", Toast.LENGTH_SHORT).show();
                     finish();
                 } else {
@@ -275,6 +458,7 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
             // other 'case' lines to check for other
             // permissions this app might request
         }
+
     }
 
 
@@ -293,11 +477,16 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
                     mCameraDevice.close();
                     abrirCamara();
                 } else {
-
                     if (titulo.startsWith("Resolución: ")) {
-                        indiceResolucion = item.getOrder();
+                        indiceResolucionPreview = item.getOrder();
                         mCameraDevice.close();
                         abrirCamara();
+                    } else {
+                        if (titulo.startsWith("Resolución Captura: ")) {
+                            indiceResolucionCaptura = item.getOrder();
+                            mCameraDevice.close();
+                            abrirCamara();
+                        }
                     }
                 }
         }
@@ -485,12 +674,12 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
     }
 
     /////////////////////////////////////////////
-    // CATURAR FOTO
-    /////////////////////////////////////////////
+// CATURAR FOTO
+/////////////////////////////////////////////
     private Button btnCapture;
-//    private CaptureRequest.Builder mPreviewRequestBuilder;
+    //    private CaptureRequest.Builder mPreviewRequestBuilder;
     private CaptureRequest.Builder mJPEGRequestBuilder;
     private ImageReader mImageReader;
-//    private Size dimensionesPreview;
+    //    private Size dimensionesPreview;
     private Size dimensionesJPEG;
-}}
+}

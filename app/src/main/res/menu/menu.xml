@@ -1,22 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<menu xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto">
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
         android:id="@+id/cambiarCamara"
         android:icon="@android:drawable/ic_menu_camera"
         android:title="Cambiar cámara">
         <menu></menu>
     </item>
-    
+
     <item
-        android:id="@+id/cambiarResolucion"
+        android:id="@+id/cambiarResolucionPreview"
         android:icon="@android:drawable/ic_menu_view"
-        android:title="Cambiar resolucion">
-        <menu>
-
-        </menu>
-
+        android:title="Cambiar resolucion Preview">
+        <menu></menu>
     </item>
+    <item
+        android:id="@+id/cambiarResolucionCaptura"
+        android:icon="@android:drawable/ic_menu_view"
+        android:title="Cambiar resolucion Captura">
+        <menu></menu>
+    </item>
+
     <item
         android:id="@+id/guardar_imagenes"
         android:icon="@android:drawable/ic_menu_gallery"
