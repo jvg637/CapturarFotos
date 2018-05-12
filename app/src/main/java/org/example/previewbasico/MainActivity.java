@@ -33,11 +33,12 @@ import android.view.SubMenu;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -48,9 +49,12 @@ import java.util.List;
 import static android.hardware.camera2.CameraMetadata.LENS_FACING_BACK;
 import static android.hardware.camera2.CameraMetadata.LENS_FACING_EXTERNAL;
 import static android.hardware.camera2.CameraMetadata.LENS_FACING_FRONT;
+import static android.view.MotionEvent.ACTION_DOWN;
+import static android.view.MotionEvent.ACTION_POINTER_DOWN;
+import static android.view.MotionEvent.ACTION_UP;
 
 public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuItemClickListener {
-    private final String TAG = "PreviewBasico";
+    private final String TAG = "Lupa";
     private TextureView textureview;
     private String mCameraId;
     private CameraDevice mCameraDevice;
@@ -70,22 +74,28 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
     private int indiceResolucionCaptura;
     private SubMenu listadoResolucionesPreview;
     private SubMenu listadoResolucionesCaptura;
+    private TextView txtZoom;
+    private TextView txtResolucion;
 
     protected void onCreate(Bundle savedInstanceState) {
         Log.i(TAG, "En onCreate !!!!");
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         textureview = (TextureView) findViewById(R.id.textureView);
         assert textureview != null;
 
+        txtZoom = findViewById(R.id.nivelZoomm);
+        txtResolucion = findViewById(R.id.resolucion);
         // Inicializa menu contextual
         popup = new PopupMenu(this, findViewById(R.id.content_main));
         popup.inflate(R.menu.menu);
         popup.setOnMenuItemClickListener(this);
+
         listadoCamaras = popup.getMenu().findItem(R.id.cambiarCamara).getSubMenu();
         listadoResolucionesPreview = popup.getMenu().findItem(R.id.cambiarResolucionPreview).getSubMenu();
         listadoResolucionesCaptura = popup.getMenu().findItem(R.id.cambiarResolucionCaptura).getSubMenu();
-
 
         if (savedInstanceState != null) {
             indiceCamara = savedInstanceState.getInt(STATE_CAMERA_INDEX, 0);
@@ -95,31 +105,43 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
             indiceCamara = indiceResolucionPreview = indiceResolucionCaptura = 0;
         }
 
-        btnCapture = (Button) findViewById(R.id.btnCaptura);
-        btnCapture.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) {
-                tomarImagen();
-            }
-        });
         textureview.setOnTouchListener(handleTouch);
-
     }
 
-    private void guardar(byte[] bytes) throws IOException {
-        final File fichero =
-                new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES) +
-                        "/micamara2.jpg");
-        Toast.makeText(MainActivity.this, "/micamara2.jpg saved",
-                Toast.LENGTH_SHORT).show();
+    private void guardar(byte[] bytes) {
+
+
+        final File rutaPictures =
+                new File(Environment.getExternalStoragePublicDirectory(
+                        Environment.DIRECTORY_PICTURES).toString());
+        String strFichero = rutaPictures + "/" +
+                (listadoCamaras.getItem(indiceCamara).getTitle().toString().split(":")[1]) + System.currentTimeMillis() + ".jpg";
+
+        if (!rutaPictures.exists()) {
+            rutaPictures.mkdir();
+        }
+
+
+        final File fichero = new File(strFichero);
+
         OutputStream output = null;
 
         try {
             output = new FileOutputStream(fichero);
             output.write(bytes);
             output.close();
+            Toast.makeText(MainActivity.this, strFichero + " saved", Toast.LENGTH_SHORT).show();
+        } catch (IOException e) {
+            Log.e(TAG, "Error escribiendo fichero: " + fichero);
+            e.printStackTrace();
         } finally {
+
             if (null != output) {
-                output.close();
+                try {
+                    output.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
         }
     }
@@ -179,6 +201,8 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
         }
     }
 
+    Size tamanos[];
+    Size tamanosCapture[];
     private void abrirCamara() {
         Log.i(TAG, "En abrir Camara");
         try {
@@ -194,16 +218,17 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
             StreamConfigurationMap map = characteristics.get(
                     CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
             assert map != null;
-            Size tamanos[] = map.getOutputSizes(SurfaceTexture.class);
+            tamanos = map.getOutputSizes(SurfaceTexture.class);
             listadoResolucionesPreview.clear();
             int cont = 0;
             for (Size tam : tamanos) {
                 listadoResolucionesPreview.add(1, 1, cont++, "Resolución: " + tam.toString());
             }
             dimensionesPreview = tamanos[indiceResolucionPreview];
+
 //            dimensionesPreview=tamanos[0];
             //El primer tamaño posible. Normalmente el mayor
-            Size tamanosCapture[] = map.getOutputSizes(ImageFormat.JPEG);
+            tamanosCapture = map.getOutputSizes(ImageFormat.JPEG);
 
             listadoResolucionesCaptura.clear();
             cont = 0;
@@ -212,7 +237,7 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
             }
             dimensionesJPEG = tamanosCapture[indiceResolucionCaptura];
 
-            zoom_level = maxzoom;
+            zoom_level = maxzoom/2;
             int width = (int) (pixels_anchura_sensor / zoom_level);
             int height = (int) (pixels_altura_sensor / zoom_level);
             int startx = (pixels_anchura_sensor - width) / 2;
@@ -220,16 +245,27 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
             Rect zonaActiva = new Rect(startx, starty, startx + width,
                     starty + height);
             zoom = zonaActiva;
-            Log.i(TAG, "Dimensiones Imagen Preview =" +String.valueOf(dimensionesPreview) +
-                    "Dimensiones Imagen Captura =" +String.valueOf(dimensionesJPEG) +
-                    "Dimensiones Sensor: "+ m.toString() + "Maxzoom="
-                    +String.valueOf(maxzoom) );
+
+            escribeDatosCamara();
+
+
+            Log.i(TAG, "Dimensiones Imagen Preview =" + String.valueOf(dimensionesPreview) +
+                    "Dimensiones Imagen Captura =" + String.valueOf(dimensionesJPEG) +
+                    "Dimensiones Sensor: " + m.toString() + "Maxzoom="
+                    + String.valueOf(maxzoom));
             manager.openCamera(mCameraId, stateCallback, null);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         } catch (SecurityException e) {
             e.printStackTrace();
         }
+    }
+
+    private void escribeDatosCamara() {
+        txtZoom.setText("Zoom: " + String.format("%2.2f", (float)zoom_level) + "/" + String.format("%2.2f", maxzoom));
+        txtResolucion.setText(dimensionesPreview.toString() + "-" + dimensionesJPEG);
+        txtZoom.invalidate();
+        txtResolucion.invalidate();
     }
 
 
@@ -320,6 +356,7 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
             Surface surface = new Surface(texture);
             mPreviewRequestBuilder = mCameraDevice.createCaptureRequest(
                     CameraDevice.TEMPLATE_PREVIEW);
+            mPreviewRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, zoom);
             mPreviewRequestBuilder.addTarget(surface);
 
             mCameraDevice.createCaptureSession(
@@ -332,12 +369,14 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
 
     private void configurarImageReader() {
         try {
+            dimensionesJPEG = tamanosCapture[indiceResolucionCaptura];
             mImageReader = ImageReader.newInstance(dimensionesJPEG.getWidth(),
                     dimensionesJPEG.getHeight(), ImageFormat.JPEG, 1);
             mImageReader.setOnImageAvailableListener(readerListener,
                     mBackgroundHandler);
             mJPEGRequestBuilder = mCameraDevice.createCaptureRequest(
                     CameraDevice.TEMPLATE_STILL_CAPTURE);
+            mJPEGRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, zoom);
             //Decirle donde se dejarán las imágenes
             mJPEGRequestBuilder.addTarget(mImageReader.getSurface());
         } catch (CameraAccessException e) {
@@ -389,6 +428,7 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
                     CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
             mJPEGRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE,
                     CaptureRequest.CONTROL_AE_MODE_ON);
+            mJPEGRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, zoom);
 
             CameraCaptureSession.CaptureCallback CaptureCallback
                     = new CameraCaptureSession.CaptureCallback() {
@@ -408,41 +448,14 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
             new ImageReader.OnImageAvailableListener() {
                 public void onImageAvailable(ImageReader reader) {
                     Image imagen = null;
-                    try {
-                        imagen = reader.acquireLatestImage();
-                        //Aquí se podría guardar o procesar la imagen
-                        ByteBuffer buffer = imagen.getPlanes()[0].getBuffer();
-                        byte[] bytes = new byte[buffer.capacity()];
-                        buffer.get(bytes);
-                        guardar(bytes);
-                    } catch (FileNotFoundException e) {
-                        e.printStackTrace();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    } finally {
-                        if (imagen != null) {
-                            imagen.close();
-                        }
-                    }
-                }
 
-                private void guardar(byte[] bytes) throws IOException {
-                    final File fichero =
-                            new File(Environment.getExternalStoragePublicDirectory(
-                                    Environment.DIRECTORY_PICTURES).toString() +
-                                    "/micamara2.jpg");
-                    Toast.makeText(MainActivity.this, "/micamara2.jpg saved",
-                            Toast.LENGTH_SHORT).show();
-                    OutputStream output = null;
-                    try {
-                        output = new FileOutputStream(fichero);
-                        output.write(bytes);
-                        output.close();
-                    } finally {
-                        if (null != output) {
-                            output.close();
-                        }
-                    }
+                    imagen = reader.acquireLatestImage();
+                    //Aquí se podría guardar o procesar la imagen
+                    ByteBuffer buffer = imagen.getPlanes()[0].getBuffer();
+                    byte[] bytes = new byte[buffer.capacity()];
+                    buffer.get(bytes);
+                    guardar(bytes);
+
                 }
             };
 
@@ -498,23 +511,37 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
                 break;
             case R.id.guardar_imagenes:
                 Log.d("OPTION", "guardar_imagenes Pulsado");
+                tomarImagen();
                 break;
             default:
                 String titulo = item.getTitle().toString();
-                if (titulo.startsWith("Camara: ")) {
+                if (titulo.startsWith("id: ")) {
                     indiceCamara = item.getOrder();
-                    mCameraDevice.close();
+                    if (mCameraDevice!=null)
+                        mCameraDevice.close();
+                    indiceResolucionCaptura=0;
+                    indiceResolucionPreview=0;
+                    stopBackgroundThread();
+                    startBackgroundThread();
                     abrirCamara();
+
                 } else {
                     if (titulo.startsWith("Resolución: ")) {
                         indiceResolucionPreview = item.getOrder();
+                        dimensionesPreview = tamanos[indiceResolucionPreview];
+                        escribeDatosCamara();
+                        if (mCameraDevice!=null)
                         mCameraDevice.close();
+                        stopBackgroundThread();
+                        startBackgroundThread();
                         abrirCamara();
+
+
                     } else {
                         if (titulo.startsWith("Resolución Captura: ")) {
                             indiceResolucionCaptura = item.getOrder();
-                            mCameraDevice.close();
-                            abrirCamara();
+                            dimensionesJPEG = tamanosCapture[indiceResolucionCaptura];
+                            escribeDatosCamara();
                         }
                     }
                 }
@@ -527,27 +554,18 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
         return true;
     }
 
-    public void mostrarMenuContextual(View view) {
-        popup.show();
-    }
 
     String[] cameras = null;
 
     private void enumeraCamaras() {
-        CameraManager manager =
-                (CameraManager) getSystemService(Context.CAMERA_SERVICE);
-        try
-
-        {
-
+        CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+        try {
             cameras = manager.getCameraIdList();
             int cont = 0;
             listadoCamaras.clear();
             for (String id : cameras) {
-                CameraCharacteristics characteristics =
-                        manager.getCameraCharacteristics(id);
-                List<CameraCharacteristics.Key<?>> keys =
-                        characteristics.getKeys();
+                CameraCharacteristics characteristics = manager.getCameraCharacteristics(id);
+                List<CameraCharacteristics.Key<?>> keys = characteristics.getKeys();
                 for (CameraCharacteristics.Key<?> key : keys) {
                     String nombrecaracteristica = key.getName();
                     Log.e(TAG, "Cámara :" + id + ":" + nombrecaracteristica);
@@ -610,7 +628,7 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
                 String.valueOf(orientation));
 
 
-        listadoCamaras.add(1, 1, cont, "Camara: " + lf);
+        listadoCamaras.add(1, 1, cont, "id: " + lf + cameraId );
     }
 
     private void printModosEnfoque(String cameraId,
@@ -696,10 +714,8 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
 
     @Override
     protected void onPause() {
-
         stopBackgroundThread();
         super.onPause();
-
     }
 
     /////////////////////////////////////////////
@@ -718,31 +734,44 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
         float y = event.getY(0) - event.getY(1);
         return (float) Math.sqrt(x * x + y * y);
     }
+
+    int maxPointers = 0;
     private View.OnTouchListener handleTouch = new View.OnTouchListener() {
         public boolean onTouch(View v, MotionEvent event) {
-            int action = event.getAction();
+            // Controla Click para mostrar menu
+            int action = (event.getAction() & MotionEvent.ACTION_MASK);
+            if (action == ACTION_DOWN || action == ACTION_POINTER_DOWN) maxPointers++;
+            if (action == ACTION_UP) {
+                if (maxPointers <= 1) popup.show();
+                maxPointers = 0;
+            }
+
             float sep_actual;
             if (event.getPointerCount() > 1) {// Multi touch
                 sep_actual = getFingerSpacing(event);
                 if (separacion != 0) {
-                    if (sep_actual > separacion && maxzoom > zoom_level + 0.1)
-                    {
+                    if (sep_actual > separacion && maxzoom >= zoom_level + 0.1) {
                         zoom_level += 0.1;
-                    } else if (sep_actual < separacion && zoom_level >= 1.1) {
+                    } else if (sep_actual < separacion && zoom_level > 1.0) {
                         zoom_level -= 0.1;
                     }
                     int width = (int) (pixels_anchura_sensor / zoom_level);
                     int height = (int) (pixels_altura_sensor / zoom_level);
                     int startx = (pixels_anchura_sensor - width) / 2;
                     int starty = (pixels_altura_sensor - height) / 2;
-                    Rect zonaActiva = new Rect(startx, starty,startx + width, starty + height);
+                    Rect zonaActiva = new Rect(startx, starty, startx + width, starty + height);
                     mPreviewRequestBuilder.set(
                             CaptureRequest.SCALER_CROP_REGION, zonaActiva);
+                    mJPEGRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, zonaActiva);
+                    zoom = zonaActiva;
                 }
                 separacion = sep_actual;
             } else {
                 separacion = 0;
             }
+
+            escribeDatosCamara();
+
             try {
                 mCaptureSession.setRepeatingRequest(
                         mPreviewRequestBuilder.build(), null, null);
@@ -750,8 +779,13 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
                 e.printStackTrace();
             } catch (NullPointerException ex) {
                 ex.printStackTrace();
+
+            } catch (Exception ex) {
+                ex.printStackTrace();
             }
+
             return true;
         }
     };
+
 }

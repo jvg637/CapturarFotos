@@ -1,26 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
-<android.support.constraint.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-
-    android:onClick="mostrarMenuContextual"
     tools:context=".MainActivity"
     tools:ignore="OnClick">
+
     <LinearLayout
-        android:orientation="horizontal"
-        android:layout_width="wrap_content"
         android:id="@+id/content_main"
-        android:layout_height="wrap_content"/>
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+    </LinearLayout>
+
     <TextureView
         android:id="@+id/textureView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"/>
-    <Button
-        android:id="@+id/btnCaptura"
-        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+    <TextView
+        android:id="@+id/nivelZoomm"
         android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        android:text="CAPTURAR" />
-</android.support.constraint.ConstraintLayout>
+        android:layout_gravity="right"
+        android:textColor="@android:color/white"
+        android:text="5/6"
+        android:layout_width="wrap_content"/>
+
+    <TextView
+        android:id="@+id/resolucion"
+        android:layout_height="wrap_content"
+        android:textColor="@android:color/white"
+        android:text=""
+        android:layout_width="wrap_content"/>
+</FrameLayout>
