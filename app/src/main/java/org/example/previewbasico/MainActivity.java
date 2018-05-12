@@ -106,6 +106,7 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
         }
 
         textureview.setOnTouchListener(handleTouch);
+
     }
 
     private void guardar(byte[] bytes) {
@@ -156,26 +157,6 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
         super.onSaveInstanceState(savedInstanceState);
     }
 
-    TextureView.SurfaceTextureListener textureListener = new TextureView.SurfaceTextureListener() {
-        public void onSurfaceTextureAvailable(SurfaceTexture surface, int width,
-                                              int height) {
-            //open your camera here
-            Log.i(TAG, "Abriendo camara desde onSurfaceTextureAvailable");
-            abrirCamara();
-        }
-
-        public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int
-                width, int height) {
-        }
-
-        public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
-            return false;
-        }
-
-        public void onSurfaceTextureUpdated(SurfaceTexture surface) {
-        }
-    };
-
 
     protected void onResume() {
         super.onResume();
@@ -185,28 +166,62 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
     }
 
     protected void startBackgroundThread() {
+        textureview.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
+            public void onSurfaceTextureAvailable(SurfaceTexture surface, int width,
+                                                  int height) {
+                //open your camera here
+                Log.i(TAG, "Abriendo camara desde onSurfaceTextureAvailable");
+                abrirCamara();
+            }
+
+            public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int
+                    width, int height) {
+//                Log.i(TAG, "onSurfaceTextureSizeChanged");
+            }
+
+            public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
+//                Log.i(TAG, "onSurfaceTextureDestroyed");
+                return false;
+            }
+
+            public void onSurfaceTextureUpdated(SurfaceTexture surface) {
+//                Log.i(TAG, "onSurfaceTonSurfaceTextureUpdatedextureDestroyed");
+
+            }
+
+        });
+
         mBackgroundThread = new HandlerThread("Camera Background");
-        mBackgroundThread.start();
-        mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
+        mBackgroundThread.start();mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
     }
 
     protected void stopBackgroundThread() {
-        mBackgroundThread.quitSafely();
+        if (mBackgroundThread != null)
+            mBackgroundThread.quitSafely();
         try {
-            mBackgroundThread.join();
+            if (mBackgroundThread != null)
+                mBackgroundThread.join();
             mBackgroundThread = null;
             mBackgroundHandler = null;
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
+
+        if (textureview != null)
+            textureview.setSurfaceTextureListener(null);
+//        if (mCameraDevice!=null)
+//            mCameraDevice.close();
+
     }
 
     Size tamanos[];
     Size tamanosCapture[];
+
     private void abrirCamara() {
         Log.i(TAG, "En abrir Camara");
         try {
             CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+            enumeraCamaras(manager);
             mCameraId = manager.getCameraIdList()[indiceCamara];
             CameraCharacteristics characteristics = manager.getCameraCharacteristics(mCameraId);
             maxzoom = characteristics.get(
@@ -237,7 +252,7 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
             }
             dimensionesJPEG = tamanosCapture[indiceResolucionCaptura];
 
-            zoom_level = maxzoom/2;
+            zoom_level = maxzoom / 2;
             int width = (int) (pixels_anchura_sensor / zoom_level);
             int height = (int) (pixels_altura_sensor / zoom_level);
             int startx = (pixels_anchura_sensor - width) / 2;
@@ -262,10 +277,12 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
     }
 
     private void escribeDatosCamara() {
-        txtZoom.setText("Zoom: " + String.format("%2.2f", (float)zoom_level) + "/" + String.format("%2.2f", maxzoom));
-        txtResolucion.setText(dimensionesPreview.toString() + "-" + dimensionesJPEG);
-        txtZoom.invalidate();
-        txtResolucion.invalidate();
+        if (dimensionesPreview != null && dimensionesPreview != null) {
+            txtZoom.setText("Zoom: " + String.format("%2.2f", (float) zoom_level) + "/" + String.format("%2.2f", maxzoom));
+            txtResolucion.setText(dimensionesPreview.toString() + "-" + dimensionesJPEG);
+            txtZoom.invalidate();
+            txtResolucion.invalidate();
+        }
     }
 
 
@@ -459,12 +476,12 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
                 }
             };
 
-    private static final int SOLICITUD_PERMISOS = 0;
+    private static final int SOLICITUD_PERMISOS = 1234;
 
     private void solicitarPermisos() {
-        if ((ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
                 ||
-                (ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)) {
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE}, SOLICITUD_PERMISOS);
         } else {
             inicializaAplicacion();
@@ -474,10 +491,9 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
     private void inicializaAplicacion() {
         // permission denied, boo! Disable the
         // functionality that depends on this permission.
-        enumeraCamaras();
         startBackgroundThread();
         Log.i(TAG, "Setting textureListener a textureview");
-        textureview.setSurfaceTextureListener(textureListener);
+
     }
 
     @Override
@@ -493,7 +509,7 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
                     Toast.makeText(this, "Se deben aceptar todos los permisos para inicializar la aplicación", Toast.LENGTH_SHORT).show();
                     finish();
                 } else {
-                    inicializaAplicacion();
+                  recreate();
                 }
                 return;
             }
@@ -517,24 +533,26 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
                 String titulo = item.getTitle().toString();
                 if (titulo.startsWith("id: ")) {
                     indiceCamara = item.getOrder();
-                    if (mCameraDevice!=null)
+                    if (mCameraDevice != null)
                         mCameraDevice.close();
-                    indiceResolucionCaptura=0;
-                    indiceResolucionPreview=0;
-                    stopBackgroundThread();
-                    startBackgroundThread();
-                    abrirCamara();
+                    indiceResolucionCaptura = 0;
+                    indiceResolucionPreview = 0;
+//                    stopBackgroundThread();
+//                    startBackgroundThread();
+//                    abrirCamara();
+                    recreate();
 
                 } else {
                     if (titulo.startsWith("Resolución: ")) {
                         indiceResolucionPreview = item.getOrder();
                         dimensionesPreview = tamanos[indiceResolucionPreview];
                         escribeDatosCamara();
-                        if (mCameraDevice!=null)
-                        mCameraDevice.close();
-                        stopBackgroundThread();
-                        startBackgroundThread();
-                        abrirCamara();
+                        if (mCameraDevice != null)
+                            mCameraDevice.close();
+//                        stopBackgroundThread();
+//                        startBackgroundThread();
+////                        abrirCamara();
+                        recreate();
 
 
                     } else {
@@ -557,24 +575,23 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
 
     String[] cameras = null;
 
-    private void enumeraCamaras() {
-        CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+    private void enumeraCamaras(CameraManager manager) {
         try {
             cameras = manager.getCameraIdList();
             int cont = 0;
             listadoCamaras.clear();
             for (String id : cameras) {
                 CameraCharacteristics characteristics = manager.getCameraCharacteristics(id);
-                List<CameraCharacteristics.Key<?>> keys = characteristics.getKeys();
-                for (CameraCharacteristics.Key<?> key : keys) {
-                    String nombrecaracteristica = key.getName();
-                    Log.e(TAG, "Cámara :" + id + ":" + nombrecaracteristica);
-                }
-                printNivelHardware(id, characteristics);
+//                List<CameraCharacteristics.Key<?>> keys = characteristics.getKeys();
+//                for (CameraCharacteristics.Key<?> key : keys) {
+//                    String nombrecaracteristica = key.getName();
+//                    Log.e(TAG, "Cámara :" + id + ":" + nombrecaracteristica);
+//                }
+//                printNivelHardware(id, characteristics);
                 printCaracteristicasPrincipales(id, characteristics, cont);
-                printModosEnfoque(id, characteristics);
-                printModosExposicion(id, characteristics);
-                printResolucionesCamara(id, characteristics);
+//                printModosEnfoque(id, characteristics);
+//                printModosExposicion(id, characteristics);
+//                printResolucionesCamara(id, characteristics);
                 cont++;
             }
         } catch (
@@ -628,7 +645,7 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
                 String.valueOf(orientation));
 
 
-        listadoCamaras.add(1, 1, cont, "id: " + lf + cameraId );
+        listadoCamaras.add(1, 1, cont, "id: " + lf + cameraId);
     }
 
     private void printModosEnfoque(String cameraId,
@@ -715,6 +732,7 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
     @Override
     protected void onPause() {
         stopBackgroundThread();
+
         super.onPause();
     }
 
@@ -760,8 +778,7 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
                     int startx = (pixels_anchura_sensor - width) / 2;
                     int starty = (pixels_altura_sensor - height) / 2;
                     Rect zonaActiva = new Rect(startx, starty, startx + width, starty + height);
-                    mPreviewRequestBuilder.set(
-                            CaptureRequest.SCALER_CROP_REGION, zonaActiva);
+                    mPreviewRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, zonaActiva);
                     mJPEGRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, zonaActiva);
                     zoom = zonaActiva;
                 }
