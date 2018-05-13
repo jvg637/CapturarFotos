@@ -158,9 +158,9 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
     }
 
 
-    protected void onResume() {
-        super.onResume();
-        Log.e(TAG, "onResume");
+    protected void onStart() {
+        super.onStart();
+        Log.e(TAG, "onStart");
         solicitarPermisos();
 
     }
@@ -192,7 +192,8 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
         });
 
         mBackgroundThread = new HandlerThread("Camera Background");
-        mBackgroundThread.start();mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
+        mBackgroundThread.start();
+        mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
     }
 
     protected void stopBackgroundThread() {
@@ -207,8 +208,8 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
             e.printStackTrace();
         }
 
-        if (textureview != null)
-            textureview.setSurfaceTextureListener(null);
+//        if (textureview != null)
+//            textureview.setSurfaceTextureListener(null);
 //        if (mCameraDevice!=null)
 //            mCameraDevice.close();
 
@@ -509,7 +510,8 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
                     Toast.makeText(this, "Se deben aceptar todos los permisos para inicializar la aplicación", Toast.LENGTH_SHORT).show();
                     finish();
                 } else {
-                  recreate();
+                    inicializaAplicacion();
+                    recreate();
                 }
                 return;
             }
@@ -730,10 +732,10 @@ public class MainActivity extends AppCompatActivity implements PopupMenu.OnMenuI
     private static final String TAG2 = " *** CaractPrincipal";
 
     @Override
-    protected void onPause() {
+    protected void onStop() {
         stopBackgroundThread();
 
-        super.onPause();
+        super.onStop();
     }
 
     /////////////////////////////////////////////
